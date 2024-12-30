@@ -7,6 +7,7 @@ from modelscope import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from swanlab.integration.transformers import SwanLabCallback
 
+# 设置设备
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # 2. 加载数据集
@@ -30,11 +31,11 @@ dataset = load_dataset('json', data_files=data_files)
 # 3. int4 量化配置 
 
 quantization_config = BitsAndBytesConfig(
-    load_in_4bit=True,  # 或者 load_in_8bit=True，根据需要设置
+    load_in_4bit=True, # 或者 load_in_8bit=True，根据需要设置
     llm_int8_enable_fp32_cpu_offload=True,
-    bnb_4bit_compute_dtype=torch.float16,#虽然我们以4位加载和存储模型，但我们在需要时会部分反量化他，并以16位精度进行计算
-    bnb_4bit_quant_type="nf4",#nf量化类型
-    bnb_4bit_use_double_quant=True,#双重量化，量化一次后再量化，进一步解决显存
+    bnb_4bit_compute_dtype=torch.float16, # 虽然我们以4位加载和存储模型，但我们在需要时会部分反量化他，并以16位精度进行计算
+    bnb_4bit_quant_type="nf4", # nf量化类型
+    bnb_4bit_use_double_quant=True, # 双重量化，量化一次后再量化，进一步解决显存
 )
 
 # 4. 加载模型和分词器
@@ -42,11 +43,10 @@ model_name = "qwen/Qwen2.5-0.5B-Instruct"  # ModelScope 的模型 ID
 
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
-    device_map=device,
     quantization_config=quantization_config,  # 应用量化配置
     torch_dtype=torch.float16,  # 使用 float16 精度
     trust_remote_code=True,
-)
+).to(device)
 tokenizer = AutoTokenizer.from_pretrained(
     model_name, trust_remote_code=True, padding_side="right",use_fast=False
 )
