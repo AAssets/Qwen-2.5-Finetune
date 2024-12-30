@@ -12,22 +12,46 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # 2. 加载数据集
 data_files = {
     "train": [
-        "Transformer/medical/finetune/train_zh_0.json", 
-        "Transformer/medical/finetune/train_en_1.json"
+        "medical/finetune/train_zh_0.json", 
+        "medical/finetune/train_en_1.json"
     ], 
     "validation": [
-        "Transformer/medical/finetune/valid_zh_0.json", 
-        "Transformer/medical/finetune/valid_en_1.json"
+        "medical/finetune/valid_zh_0.json", 
+        "medical/finetune/valid_en_1.json"
     ],
     "test": [
-        "Transformer/medical/finetune/test_zh_0.json", 
-        "Transformer/medical/finetune/test_en_1.json"
+        "medical/finetune/test_zh_0.json", 
+        "medical/finetune/test_en_1.json"
     ]
 }
 
 dataset = load_dataset('json', data_files=data_files)
 
-# 3. 预处理数据集
+# 3. int4 量化配置 
+
+quantization_config = BitsAndBytesConfig(
+    load_in_4bit=True,  # 或者 load_in_8bit=True，根据需要设置
+    llm_int8_enable_fp32_cpu_offload=True,
+    bnb_4bit_compute_dtype=torch.float16,#虽然我们以4位加载和存储模型，但我们在需要时会部分反量化他，并以16位精度进行计算
+    bnb_4bit_quant_type="nf4",#nf量化类型
+    bnb_4bit_use_double_quant=True,#双重量化，量化一次后再量化，进一步解决显存
+)
+
+# 4. 加载模型和分词器
+model_name = "qwen/Qwen2.5-0.5B-Instruct"  # ModelScope 的模型 ID
+
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    device_map=device,
+    quantization_config=quantization_config,  # 应用量化配置
+    torch_dtype=torch.float16,  # 使用 float16 精度
+    trust_remote_code=True,
+)
+tokenizer = AutoTokenizer.from_pretrained(
+    model_name, trust_remote_code=True, padding_side="right",use_fast=False
+)
+
+# 5. 预处理数据集
 def preprocess_function(examples):
     # 定义提示词模板
     PROMPT_DICT = {
@@ -65,32 +89,7 @@ def preprocess_function(examples):
         "attention_mask": tokenized_inputs["attention_mask"],
     }
 
-dataset = dataset.map(preprocess_function, batched=True, num_proc=1, remove_columns=["instruction", "input", "output"],)
-
-# int4 量化配置 
-
-quantization_config = BitsAndBytesConfig(
-    load_in_4bit=True,  # 或者 load_in_8bit=True，根据需要设置
-    llm_int8_enable_fp32_cpu_offload=True,
-    bnb_4bit_compute_dtype=torch.float16,#虽然我们以4位加载和存储模型，但我们在需要时会部分反量化他，并以16位精度进行计算
-    bnb_4bit_quant_type="nf4",#nf量化类型
-    bnb_4bit_use_double_quant=True,#双重量化，量化一次后再量化，进一步解决显存
-)
-
-# 3. 加载模型和分词器
-model_name = "qwen/Qwen2.5-0.5B-Instruct"  # ModelScope 的模型 ID
-
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    device_map=device,
-    quantization_config=quantization_config,  # 应用量化配置
-    torch_dtype=torch.float16,  # 使用 float16 精度
-    trust_remote_code=True,
-)
-tokenizer = AutoTokenizer.from_pretrained(
-    model_name, trust_remote_code=True, padding_side="right",use_fast=False
-)
-
+dataset = dataset.map(preprocess_function, batched=True, num_proc=4, remove_columns=["instruction", "input", "output"],)
 
 model = prepare_model_for_kbit_training(model)
 # 6. 设置 LoRA 参数
