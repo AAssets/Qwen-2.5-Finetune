@@ -7,9 +7,6 @@ from modelscope import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from swanlab.integration.transformers import SwanLabCallback
 
-# 设置设备
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 # 2. 加载数据集
 data_files = {
     "train": [
@@ -39,14 +36,14 @@ quantization_config = BitsAndBytesConfig(
 )
 
 # 4. 加载模型和分词器
-model_name = "qwen/Qwen2.5-0.5B-Instruct"  # ModelScope 的模型 ID
+model_name = "Qwen/Qwen2.5-0.5B"  # ModelScope 的模型 ID
 
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     quantization_config=quantization_config,  # 应用量化配置
     torch_dtype=torch.float16,  # 使用 float16 精度
     trust_remote_code=True,
-).to(device)
+)
 tokenizer = AutoTokenizer.from_pretrained(
     model_name, trust_remote_code=True, padding_side="right",use_fast=False
 )
@@ -79,7 +76,7 @@ def preprocess_function(examples):
         texts,
         truncation=True,
         padding="max_length",
-        max_length=2048,
+        max_length=1024,
         return_tensors="pt",  
     )
 
@@ -122,6 +119,7 @@ training_args = TrainingArguments(
     save_strategy="steps",  
     load_best_model_at_end=True,  # 训练结束后加载最佳模型
     gradient_checkpointing=True,  # 启用梯度检查点
+    ddp_find_unused_parameters=False
 )
 
 swanlab_config = {
@@ -152,67 +150,67 @@ trainer.train()
 # 9. 保存训练结果
 trainer.save_model(trainer.args.output_dir)
 
-import torch
-from peft import PeftModel, PeftConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer
+# import torch
+# from peft import PeftModel, PeftConfig
+# from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# 获取训练输出目录
-peft_model_dir = trainer.args.output_dir
+# # 获取训练输出目录
+# peft_model_dir = trainer.args.output_dir
 
-# 从训练模型目录加载配置
-config = PeftConfig.from_pretrained(peft_model_dir)
+# # 从训练模型目录加载配置
+# config = PeftConfig.from_pretrained(peft_model_dir)
 
-# 加载基础模型
-model = AutoModelForCausalLM.from_pretrained(
-    config.base_model_name_or_path,
-    return_dict=True,
-    device_map=device,
-    torch_dtype=torch.float16,
-    quantization_config=quantization_config
-)
+# # 加载基础模型
+# model = AutoModelForCausalLM.from_pretrained(
+#     config.base_model_name_or_path,
+#     return_dict=True,
+#     device_map=device,
+#     torch_dtype=torch.float16,
+#     quantization_config=quantization_config
+# )
 
-# 加载分词器
-tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
+# # 加载分词器
+# tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
 
-# 加载 LoRA 模型
-model = PeftModel.from_pretrained(model, peft_model_dir)
+# # 加载 LoRA 模型
+# model = PeftModel.from_pretrained(model, peft_model_dir)
 
-# 打印模型信息
-print(model)
+# # 打印模型信息
+# print(model)
 
-# 中文推理示例
-prompt_zh = "请问，感冒的常见症状有哪些？"
-messages_zh = [
-    {"role": "system", "content": "你是一个智能医疗助理."},
-    {"role": "user", "content": prompt_zh}
-]
+# # 中文推理示例
+# prompt_zh = "请问，感冒的常见症状有哪些？"
+# messages_zh = [
+#     {"role": "system", "content": "你是一个智能医疗助理."},
+#     {"role": "user", "content": prompt_zh}
+# ]
 
-# 英文推理示例
-prompt_en = "What are the common symptoms of a cold?"
-messages_en = [
-    {"role": "system", "content": "You are a medical assistant."},
-    {"role": "user", "content": prompt_en}
-]
+# # 英文推理示例
+# prompt_en = "What are the common symptoms of a cold?"
+# messages_en = [
+#     {"role": "system", "content": "You are a medical assistant."},
+#     {"role": "user", "content": prompt_en}
+# ]
 
-# 应用聊天模板
-text_zh = tokenizer.apply_chat_template(messages_zh, tokenize=False, add_generation_prompt=True)
-text_en = tokenizer.apply_chat_template(messages_en, tokenize=False, add_generation_prompt=True)
+# # 应用聊天模板
+# text_zh = tokenizer.apply_chat_template(messages_zh, tokenize=False, add_generation_prompt=True)
+# text_en = tokenizer.apply_chat_template(messages_en, tokenize=False, add_generation_prompt=True)
 
-# 准备模型输入
-model_inputs_zh = tokenizer([text_zh], return_tensors="pt").to(model.device)
-model_inputs_en = tokenizer([text_en], return_tensors="pt").to(model.device)
+# # 准备模型输入
+# model_inputs_zh = tokenizer([text_zh], return_tensors="pt").to(model.device)
+# model_inputs_en = tokenizer([text_en], return_tensors="pt").to(model.device)
 
-# 生成参数设置
-gen_kwargs = {"max_length": 512, "do_sample": True, "top_k": 1}
+# # 生成参数设置
+# gen_kwargs = {"max_length": 512, "do_sample": True, "top_k": 1}
 
-# 中文推理
-with torch.no_grad():
-    outputs_zh = model.generate(**model_inputs_zh, **gen_kwargs)
-    outputs_zh = outputs_zh[:, model_inputs_zh['input_ids'].shape[1]:]
-    print("中文模型输出:", tokenizer.decode(outputs_zh[0], skip_special_tokens=True))
+# # 中文推理
+# with torch.no_grad():
+#     outputs_zh = model.generate(**model_inputs_zh, **gen_kwargs)
+#     outputs_zh = outputs_zh[:, model_inputs_zh['input_ids'].shape[1]:]
+#     print("中文模型输出:", tokenizer.decode(outputs_zh[0], skip_special_tokens=True))
 
-# 英文推理
-with torch.no_grad():
-    outputs_en = model.generate(**model_inputs_en, **gen_kwargs)
-    outputs_en = outputs_en[:, model_inputs_en['input_ids'].shape[1]:]
-    print("英文模型输出:", tokenizer.decode(outputs_en[0], skip_special_tokens=True))
+# # 英文推理
+# with torch.no_grad():
+#     outputs_en = model.generate(**model_inputs_en, **gen_kwargs)
+#     outputs_en = outputs_en[:, model_inputs_en['input_ids'].shape[1]:]
+#     print("英文模型输出:", tokenizer.decode(outputs_en[0], skip_special_tokens=True))
